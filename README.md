@@ -1,3 +1,65 @@
+
+# Claude Code Proxy To DeepSeek
+
+这是一个支持多种大语言模型的代理服务器，特别支持 DeepSeek 模型。主要是 DeepSeek 的价格比较便宜。
+
+注意事项
+1. ClaudeCode 的启动默认需要完成 Claude 的账号登录，这部分需要自行解决。
+2. 启动完成后，选择 API 计费模式。
+
+## 环境变量配置
+
+### API Keys
+```bash
+# DeepSeek API Key
+DEEPSEEK_API_KEY=your_deepseek_api_key
+
+# 其他可选的 API Keys
+OPENAI_API_KEY=your_openai_api_key
+ANTHROPIC_API_KEY=your_anthropic_api_key
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+### 模型配置
+```bash
+# 首选提供商 (默认: deepseek)
+PREFERRED_PROVIDER=deepseek
+
+# 大模型配置 (默认: deepseek-reasoner)
+BIG_MODEL=deepseek-reasoner
+
+# 小模型配置 (默认: deepseek-chat)
+SMALL_MODEL=deepseek-chat
+```
+
+## 支持的 DeepSeek 模型
+
+目前支持以下 DeepSeek 模型：
+
+- `deepseek-chat`: 通用对话模型
+- `deepseek-reasoner`: 高级推理模型
+
+## 模型映射
+
+系统会自动将 Anthropic 的模型名称映射到 DeepSeek 模型：
+
+- `claude-3-haiku` → `deepseek-chat`
+- `claude-3-sonnet` → `deepseek-reasoner`
+
+## 启动服务
+
+```bash
+uv run uvicorn server:app --host 0.0.0.0 --port 8082 --reload
+```
+
+## 注意事项
+
+1. 确保设置了正确的 API Key
+2. 默认使用 DeepSeek 作为首选提供商
+3. 可以通过环境变量修改模型映射
+4. 支持流式响应和工具调用
+5. 完全兼容 Anthropic API 格式
+
 # Anthropic API Proxy for Gemini & OpenAI Models 🔄
 
 **Use Anthropic clients (like Claude Code) with Gemini or OpenAI backends.** 🤝
