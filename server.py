@@ -15,6 +15,39 @@ import re
 from datetime import datetime
 import sys
 
+# 添加错误处理工具函数
+def safe_json_serialize(obj):
+    """安全地将对象转换为可 JSON 序列化的格式"""
+    if hasattr(obj, '__dict__'):
+        return {k: safe_json_serialize(v) for k, v in obj.__dict__.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [safe_json_serialize(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {k: safe_json_serialize(v) for k, v in obj.items()}
+    elif hasattr(obj, 'text'):
+        return obj.text
+    elif hasattr(obj, 'status_code'):
+        return obj.status_code
+    else:
+        return str(obj)
+
+def handle_litellm_error(e):
+    """处理 LiteLLM 特定错误"""
+    error_info = {
+        "error": str(e),
+        "type": type(e).__name__
+    }
+    
+    # 处理常见错误类型
+    if isinstance(e, litellm.APIError):
+        error_info["provider"] = getattr(e, 'llm_provider', 'unknown')
+        error_info["model"] = getattr(e, 'model', 'unknown')
+        if hasattr(e, 'response'):
+            error_info["status_code"] = getattr(e.response, 'status_code', 500)
+            error_info["response_text"] = getattr(e.response, 'text', '')
+    
+    return error_info
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -28,9 +61,9 @@ logger = logging.getLogger(__name__)
 # Configure uvicorn to be quieter
 import uvicorn
 # Tell uvicorn's loggers to be quiet
-logging.getLogger("uvicorn").setLevel(logging.WARNING)
-logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
+logging.getLogger("uvicorn").setLevel(logging.DEBUG)
+logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
+logging.getLogger("uvicorn.error").setLevel(logging.DEBUG)
 
 # Create a filter to block any log messages containing specific strings
 class MessageFilter(logging.Filter):
@@ -84,12 +117,12 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 
 # Get preferred provider (default to openai)
-PREFERRED_PROVIDER = os.environ.get("PREFERRED_PROVIDER", "openai").lower()
+PREFERRED_PROVIDER = os.environ.get("PREFERRED_PROVIDER", "deepseek").lower()
 
 # Get model mapping configuration from environment
 # Default to latest OpenAI models if not set
-BIG_MODEL = os.environ.get("BIG_MODEL", "gpt-4.1")
-SMALL_MODEL = os.environ.get("SMALL_MODEL", "gpt-4.1-mini")
+BIG_MODEL = os.environ.get("BIG_MODEL", "deepseek-reasoner")
+SMALL_MODEL = os.environ.get("SMALL_MODEL", "deepseek-chat")
 
 # List of OpenAI models
 OPENAI_MODELS = [
@@ -1333,39 +1366,25 @@ async def create_message(
             return anthropic_response
                 
     except Exception as e:
-        import traceback
-        error_traceback = traceback.format_exc()
+        # 使用新的错误处理逻辑
+        error_info = handle_litellm_error(e)
+        safe_error_details = safe_json_serialize(error_info)
         
-        # Capture as much info as possible about the error
-        error_details = {
-            "error": str(e),
-            "type": type(e).__name__,
-            "traceback": error_traceback
-        }
+        try:
+            logger.error(f"Error processing request: {json.dumps(safe_error_details, indent=2)}")
+        except Exception as log_error:
+            logger.error(f"Error logging error details: {str(log_error)}")
+            logger.error(f"Original error: {str(e)}")
         
-        # Check for LiteLLM-specific attributes
-        for attr in ['message', 'status_code', 'response', 'llm_provider', 'model']:
-            if hasattr(e, attr):
-                error_details[attr] = getattr(e, attr)
-        
-        # Check for additional exception details in dictionaries
-        if hasattr(e, '__dict__'):
-            for key, value in e.__dict__.items():
-                if key not in error_details and key not in ['args', '__traceback__']:
-                    error_details[key] = str(value)
-        
-        # Log all error details
-        logger.error(f"Error processing request: {json.dumps(error_details, indent=2)}")
-        
-        # Format error for response
+        # 格式化错误消息
         error_message = f"Error: {str(e)}"
-        if 'message' in error_details and error_details['message']:
-            error_message += f"\nMessage: {error_details['message']}"
-        if 'response' in error_details and error_details['response']:
-            error_message += f"\nResponse: {error_details['response']}"
+        if 'message' in error_info and error_info['message']:
+            error_message += f"\nMessage: {error_info['message']}"
+        if 'response_text' in error_info and error_info['response_text']:
+            error_message += f"\nResponse: {error_info['response_text']}"
         
-        # Return detailed error
-        status_code = error_details.get('status_code', 500)
+        # 返回错误响应
+        status_code = error_info.get('status_code', 500)
         raise HTTPException(status_code=status_code, detail=error_message)
 
 @app.post("/v1/messages/count_tokens")
@@ -1435,10 +1454,26 @@ async def count_tokens(
             return TokenCountResponse(input_tokens=1000)  # Default fallback
             
     except Exception as e:
-        import traceback
-        error_traceback = traceback.format_exc()
-        logger.error(f"Error counting tokens: {str(e)}\n{error_traceback}")
-        raise HTTPException(status_code=500, detail=f"Error counting tokens: {str(e)}")
+        # 使用新的错误处理逻辑
+        error_info = handle_litellm_error(e)
+        safe_error_details = safe_json_serialize(error_info)
+        
+        try:
+            logger.error(f"Error counting tokens: {json.dumps(safe_error_details, indent=2)}")
+        except Exception as log_error:
+            logger.error(f"Error logging error details: {str(log_error)}")
+            logger.error(f"Original error: {str(e)}")
+        
+        # 格式化错误消息
+        error_message = f"Error counting tokens: {str(e)}"
+        if 'message' in error_info and error_info['message']:
+            error_message += f"\nMessage: {error_info['message']}"
+        if 'response_text' in error_info and error_info['response_text']:
+            error_message += f"\nResponse: {error_info['response_text']}"
+        
+        # 返回错误响应
+        status_code = error_info.get('status_code', 500)
+        raise HTTPException(status_code=status_code, detail=error_message)
 
 @app.get("/")
 async def root():
