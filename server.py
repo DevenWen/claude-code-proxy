@@ -115,6 +115,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
 # Get preferred provider (default to openai)
 PREFERRED_PROVIDER = os.environ.get("PREFERRED_PROVIDER", "deepseek").lower()
@@ -150,6 +151,21 @@ GEMINI_MODELS = [
 DEEPSEEK_MODELS = [
     "deepseek-chat",
     "deepseek-reasoner",
+]
+
+# List of OpenRouter models (popular ones)
+OPENROUTER_MODELS = [
+    "anthropic/claude-3.5-sonnet",
+    "anthropic/claude-3-opus",
+    "anthropic/claude-3-haiku",
+    "openai/gpt-4",
+    "openai/gpt-4-turbo",
+    "openai/gpt-3.5-turbo",
+    "google/gemini-pro",
+    "meta-llama/llama-3.1-8b-instruct",
+    "meta-llama/llama-3.1-70b-instruct",
+    "mistralai/mistral-7b-instruct",
+    "mistralai/mixtral-8x7b-instruct",
 ]
 
 # Helper function to clean schema for Gemini
@@ -244,6 +260,8 @@ class MessagesRequest(BaseModel):
             clean_v = clean_v[7:]
         elif clean_v.startswith('deepseek/'):
             clean_v = clean_v[9:]
+        elif clean_v.startswith('openrouter/'):
+            clean_v = clean_v[11:]
 
         # --- Mapping Logic --- START ---
         mapped = False
@@ -254,6 +272,9 @@ class MessagesRequest(BaseModel):
                 mapped = True
             elif PREFERRED_PROVIDER == "deepseek" and SMALL_MODEL in DEEPSEEK_MODELS:
                 new_model = f"deepseek/{SMALL_MODEL}"
+                mapped = True
+            elif PREFERRED_PROVIDER == "openrouter":
+                new_model = f"openrouter/{SMALL_MODEL}"
                 mapped = True
             else:
                 new_model = f"openai/{SMALL_MODEL}"
@@ -266,6 +287,9 @@ class MessagesRequest(BaseModel):
                 mapped = True
             elif PREFERRED_PROVIDER == "deepseek" and BIG_MODEL in DEEPSEEK_MODELS:
                 new_model = f"deepseek/{BIG_MODEL}"
+                mapped = True
+            elif PREFERRED_PROVIDER == "openrouter":
+                new_model = f"openrouter/{BIG_MODEL}"
                 mapped = True
             else:
                 new_model = f"openai/{BIG_MODEL}"
@@ -282,13 +306,16 @@ class MessagesRequest(BaseModel):
             elif clean_v in DEEPSEEK_MODELS and not v.startswith('deepseek/'):
                 new_model = f"deepseek/{clean_v}"
                 mapped = True # Technically mapped to add prefix
+            elif clean_v in OPENROUTER_MODELS and not v.startswith('openrouter/'):
+                new_model = f"openrouter/{clean_v}"
+                mapped = True # Technically mapped to add prefix
         # --- Mapping Logic --- END ---
 
         if mapped:
             logger.debug(f"📌 MODEL MAPPING: '{original_model}' ➡️ '{new_model}'")
         else:
              # If no mapping occurred and no prefix exists, log warning or decide default
-             if not v.startswith(('openai/', 'gemini/', 'anthropic/', 'deepseek/')):
+             if not v.startswith(('openai/', 'gemini/', 'anthropic/', 'deepseek/', 'openrouter/')):
                  logger.warning(f"⚠️ No prefix or mapping rule for model: '{original_model}'. Using as is.")
              new_model = v # Ensure we return the original if no rule applied
 
@@ -328,6 +355,8 @@ class TokenCountRequest(BaseModel):
             clean_v = clean_v[7:]
         elif clean_v.startswith('deepseek/'):
             clean_v = clean_v[9:]
+        elif clean_v.startswith('openrouter/'):
+            clean_v = clean_v[11:]
 
         # --- Mapping Logic --- START ---
         mapped = False
@@ -338,6 +367,9 @@ class TokenCountRequest(BaseModel):
                 mapped = True
             elif PREFERRED_PROVIDER == "deepseek" and SMALL_MODEL in DEEPSEEK_MODELS:
                 new_model = f"deepseek/{SMALL_MODEL}"
+                mapped = True
+            elif PREFERRED_PROVIDER == "openrouter":
+                new_model = f"openrouter/{SMALL_MODEL}"
                 mapped = True
             else:
                 new_model = f"openai/{SMALL_MODEL}"
@@ -350,6 +382,9 @@ class TokenCountRequest(BaseModel):
                 mapped = True
             elif PREFERRED_PROVIDER == "deepseek" and BIG_MODEL in DEEPSEEK_MODELS:
                 new_model = f"deepseek/{BIG_MODEL}"
+                mapped = True
+            elif PREFERRED_PROVIDER == "openrouter":
+                new_model = f"openrouter/{BIG_MODEL}"
                 mapped = True
             else:
                 new_model = f"openai/{BIG_MODEL}"
@@ -366,12 +401,15 @@ class TokenCountRequest(BaseModel):
             elif clean_v in DEEPSEEK_MODELS and not v.startswith('deepseek/'):
                 new_model = f"deepseek/{clean_v}"
                 mapped = True # Technically mapped to add prefix
+            elif clean_v in OPENROUTER_MODELS and not v.startswith('openrouter/'):
+                new_model = f"openrouter/{clean_v}"
+                mapped = True # Technically mapped to add prefix
         # --- Mapping Logic --- END ---
 
         if mapped:
             logger.debug(f"📌 TOKEN COUNT MAPPING: '{original_model}' ➡️ '{new_model}'")
         else:
-             if not v.startswith(('openai/', 'gemini/', 'anthropic/', 'deepseek/')):
+             if not v.startswith(('openai/', 'gemini/', 'anthropic/', 'deepseek/', 'openrouter/')):
                  logger.warning(f"⚠️ No prefix or mapping rule for token count model: '{original_model}'. Using as is.")
              new_model = v # Ensure we return the original if no rule applied
 
@@ -595,9 +633,9 @@ def convert_anthropic_to_litellm(anthropic_request: MessagesRequest) -> Dict[str
     
     # Cap max_tokens for OpenAI models to their limit of 16384
     max_tokens = anthropic_request.max_tokens
-    if anthropic_request.model.startswith("openai/") or anthropic_request.model.startswith("gemini/"):
+    if anthropic_request.model.startswith("openai/") or anthropic_request.model.startswith("gemini/") or anthropic_request.model.startswith("openrouter/"):
         max_tokens = min(max_tokens, 16384)
-        logger.debug(f"Capping max_tokens to 16384 for OpenAI/Gemini model (original value: {anthropic_request.max_tokens})")
+        logger.debug(f"Capping max_tokens to 16384 for OpenAI/Gemini/OpenRouter model (original value: {anthropic_request.max_tokens})")
     
     # Create LiteLLM request dict
     litellm_request = {
@@ -690,6 +728,8 @@ def convert_litellm_to_anthropic(litellm_response: Union[Dict[str, Any], Any],
             clean_model = clean_model[len("anthropic/"):]
         elif clean_model.startswith("openai/"):
             clean_model = clean_model[len("openai/"):]
+        elif clean_model.startswith("openrouter/"):
+            clean_model = clean_model[len("openrouter/"):]
         
         # Check if this is a Claude model (which supports content blocks)
         is_claude_model = clean_model.startswith("claude-")
@@ -1177,15 +1217,18 @@ async def create_message(
         elif request.model.startswith("deepseek/"):
             litellm_request["api_key"] = DEEPSEEK_API_KEY
             logger.debug(f"Using DeepSeek API key for model: {request.model}")
+        elif request.model.startswith("openrouter/"):
+            litellm_request["api_key"] = OPENROUTER_API_KEY
+            logger.debug(f"Using OpenRouter API key for model: {request.model}")
         else:
             litellm_request["api_key"] = ANTHROPIC_API_KEY
             logger.debug(f"Using Anthropic API key for model: {request.model}")
         
-        # For OpenAI models - modify request format to work with limitations
-        if "openai" in litellm_request["model"] and "messages" in litellm_request:
-            logger.debug(f"Processing OpenAI model request: {litellm_request['model']}")
+        # For OpenAI/OpenRouter models - modify request format to work with limitations
+        if ("openai" in litellm_request["model"] or "openrouter" in litellm_request["model"]) and "messages" in litellm_request:
+            logger.debug(f"Processing OpenAI/OpenRouter model request: {litellm_request['model']}")
             
-            # For OpenAI models, we need to convert content blocks to simple strings
+            # For OpenAI/OpenRouter models, we need to convert content blocks to simple strings
             # and handle other requirements
             for i, msg in enumerate(litellm_request["messages"]):
                 # Special case - handle message content directly when it's a list of tool_result
@@ -1290,7 +1333,7 @@ async def create_message(
                                 elif block.get("type") == "image":
                                     text_content += "[Image content - not displayed in text format]\n"
                         
-                        # Make sure content is never empty for OpenAI models
+                        # Make sure content is never empty for OpenAI/OpenRouter models
                         if not text_content.strip():
                             text_content = "..."
                         
